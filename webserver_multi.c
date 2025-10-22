@@ -3,10 +3,35 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 #include "webserver.h"
+#include <semaphore.h>
 
 #define MAX_REQUEST 100
 
+int buffer[MAX_REQUEST];
 int port, numThread;
+pthread_mutex_t mutex;
+sem_t full;
+sem_t empty;
+int bufLoc;
+
+void *worker() {
+	// Worker loop
+	while (1) {
+		sem_wait(&full);                // Wait for a spot in the buffer to fill
+		pthread_mutex_lock(&mutex);     // Lock the mutex
+
+		/* DO SOMETHING */
+		int fd = buffer[bufLoc];        // Get the fd from the buffer
+		bufLoc = (bufLoc - 1) % MAX_REQUEST; // Move the buffer index back 1
+
+		pthread_mutex_unlock(&mutex);   // Unlock the mutex
+		sem_post(&empty);               // Signal there is a new empty space in buffer
+
+		process(fd);                    // Process the fd's request
+	} // while
+
+	return;
+} // worker
 
 void *listener() {
 	int r;
@@ -37,14 +62,55 @@ void *listener() {
 		s = accept(sock, NULL, NULL);
 		if (s < 0) break;
 
-		//process(s);
+		/* PLACE FD IN BUFFER */
+		sem_wait(&empty);               // Wait for there to be an empty spot in the buffer
+		pthread_mutex_lock(&mutex);     // Lock the mutex
+
+		bufLoc = (bufLoc + 1) % MAX_REQUEST; // Move the buffer index forward 1
+		buffer[bufLoc] = s;             // Place fd into buffer
+
+		pthread_mutex_unlock(&mutex);   // Unlock the mutex
+		sem_post(&full);                // Signal that there is a new full space in the buffer
 	} // while
 
 	close(sock);
 } // listener
 
 void thread_control() {
-	/* ----- */
+
+	// Set the semaphore values
+	pthread_mutex_init(&mutex, NULL);    // init the mutex
+	sem_init(&full, 0, 0);               // number of full spaces in buffer (0)
+	sem_init(&empty, 0, MAX_REQUEST);    // number of empty spaces in buffer (MAX_REQUEST)
+
+	// Set buffer pointer
+	bufLoc = MAX_REQUEST;                          // Slot that will be edited in the buffer
+
+	// Create 1 listener thread
+	pthread_t listenerThread;
+	if (pthread_create(&listenerThread, NULL, listener, NULL)) {
+		printf("Error: Failed to create listener thread.");
+		exit(1);
+	} // if
+	printf("Listener thread created and ready.\n");
+
+	// Create numThreads worker threads
+	pthread_t workerThread[numThread];
+	for (int i = 0; i < numThread; i++) {
+		if (pthread_create(&workerThread[i], NULL, worker, NULL)) {
+			printf("Error: Failed to create worker thread %i.\n", i);
+			exit(1);
+		} // if
+		printf("Worker thread %i created and ready to process requests.\n", i+1);
+	} // for
+
+	// Wait for the threads to terminate
+	for (int i = 0; i < numThread; i++) {
+		pthread_join(workerThread[i], NULL); // Worker threads
+	} // for
+	pthread_join(listenerThread, NULL);      // Listener thread
+
+	// TODO: Destroy the semaphores(?)
 } // thread_control
 
 int main(int argc, char *argv[]) {
