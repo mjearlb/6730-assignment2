@@ -134,10 +134,9 @@ void thread_control() {
 		// printf("Worker thread %i created and ready to process requests.\n", i+1);
 	} // for
 
-	// Monitor the threads (BROKEN)
+	// Monitor the threads
 	threadMonitor(workerThread, &listenerThread);
 
-	// TODO: Destroy the semaphores(?)
 } // thread_control
 
 
