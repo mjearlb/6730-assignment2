@@ -25,8 +25,8 @@ void *worker() {
 		pthread_mutex_lock(&mutex);     // Lock the mutex
 
 		/* DO SOMETHING */
-		int fd = buffer[out];        // Get the fd from the buffer
-		out = (out + 1) % MAX_REQUEST; // Move the buffer index back 1
+		int fd = buffer[out];           // Get the fd from the buffer
+		out = (out + 1) % MAX_REQUEST;  // Move the out buffer pointer forward 1
 
 		pthread_mutex_unlock(&mutex);   // Unlock the mutex
 		sem_post(&empty);               // Signal there is a new empty space in buffer
